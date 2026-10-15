@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>web-crawler · Sơ đồ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22%230f7b6c%22/%3E%3Cpath d=%22M8 22l5-12 3 7 3-5 5 10%22 stroke=%22white%22 stroke-width=%222.5%22 fill=%22none%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E">
+<meta name="description" content="Tech stack, kiến trúc và cách dùng bộ 49 crawler web-crawler.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef1f5; --text:#141a22; --muted:#5b6675; --line:#d7dde5;
+  --accent:#0f7b6c; --accent-soft:#d9f0ec; --blue:#2f5fd0; --blue-soft:#e1e9fb; --amber:#b26b00; --amber-soft:#fbefd9;
+  --red:#b4232c; --red-soft:#f8e0e1; --violet:#6a43c4; --violet-soft:#ebe4fa; --on-accent:#ffffff;
+  --radius:14px; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1318; --surface:#171c23; --surface-2:#1e252e; --text:#e6ebf1; --muted:#9aa6b4; --line:#2c3540;
+    --accent:#3fc1ac; --accent-soft:#163731; --blue:#7c9df0; --blue-soft:#1b2640; --amber:#e3a13d; --amber-soft:#3a2b12;
+    --red:#ef6b72; --red-soft:#3d1a1d; --violet:#a98af0; --violet-soft:#2a2141; --on-accent:#0b1a17;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1318; --surface:#171c23; --surface-2:#1e252e; --text:#e6ebf1; --muted:#9aa6b4; --line:#2c3540;
+  --accent:#3fc1ac; --accent-soft:#163731; --blue:#7c9df0; --blue-soft:#1b2640; --amber:#e3a13d; --amber-soft:#3a2b12;
+  --red:#ef6b72; --red-soft:#3d1a1d; --violet:#a98af0; --violet-soft:#2a2141; --on-accent:#0b1a17;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Be Vietnam Pro",system-ui,sans-serif}
+a{color:var(--accent)}
+code,pre{font-family:var(--mono);font-size:.88em}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;align-items:center;gap:16px;height:56px}
+.brand{font-weight:700;letter-spacing:-.01em;text-decoration:none;color:var(--text)}
+.brand span{color:var(--accent)}
+nav.toc{display:flex;gap:14px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+nav.toc a{color:var(--muted);text-decoration:none;font-size:.9rem;white-space:nowrap}
+nav.toc a:hover{color:var(--text)}
+.theme{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:.85rem}
+.hero{padding:48px 0 24px}
+.hero h1{font-size:clamp(1.9rem,4.5vw,2.8rem);line-height:1.15;margin:0 0 12px;letter-spacing:-.02em}
+.hero p{color:var(--muted);max-width:680px;margin:0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:28px 0 8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.stat b{display:block;font-size:1.7rem;line-height:1.1}
+.stat span{color:var(--muted);font-size:.85rem}
+section{padding:36px 0;border-top:1px solid var(--line)}
+section h2{font-size:1.45rem;margin:0 0 6px;letter-spacing:-.01em}
+section .lead{color:var(--muted);margin:0 0 22px;max-width:720px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px;overflow-x:auto}
+.diagram svg{display:block;width:100%;min-width:680px;height:auto}
+svg text{font-family:"Be Vietnam Pro",system-ui,sans-serif;fill:var(--text)}
+svg .sub{fill:var(--muted);font-size:12.5px}
+svg .mono{font-family:var(--mono);font-size:12px;fill:var(--muted)}
+.layer-in{fill:var(--blue-soft);stroke:var(--blue)}
+.layer-core{fill:var(--accent-soft);stroke:var(--accent)}
+.layer-disc{fill:var(--violet-soft);stroke:var(--violet)}
+.layer-store{fill:var(--amber-soft);stroke:var(--amber)}
+.layer-out{fill:var(--surface-2);stroke:var(--line)}
+.layer-bad{fill:var(--red-soft);stroke:var(--red)}
+.arrow{stroke:var(--muted);stroke-width:1.6;fill:none}
+.arrowhead{fill:var(--muted)}
+.tag{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted);margin:2px 4px 2px 0}
+.stack h3{margin:0 0 8px;font-size:1rem;display:flex;align-items:center;gap:8px}
+.dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+.stack ul{margin:0;padding-left:18px;color:var(--muted)}
+.stack li{margin:3px 0}
+.stack li b{color:var(--text);font-weight:600}
+pre{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;margin:10px 0 0}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.steps li{counter-increment:s;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px 14px 58px;position:relative}
+.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:28px;height:28px;border-radius:8px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:.9rem}
+.steps li b{display:block}
+.steps li span{color:var(--muted);font-size:.93rem}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.04em}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit;font-size:.88rem}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.panel[hidden]{display:none}
+.callout{border-left:4px solid var(--amber);background:var(--amber-soft);border-radius:10px;padding:12px 14px;margin-top:16px}
+footer{padding:28px 0 48px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line)}
+@media (max-width:640px){nav.toc{display:none}.steps li{padding-left:52px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#">web<span>-</span>crawler</a>
+  <nav class="toc">
+    <a href="#kien-truc">Kiến trúc</a><a href="#stack">Tech stack</a><a href="#luong">Luồng chạy</a>
+    <a href="#dung">Cách dùng</a><a href="#them-site">Thêm site</a><a href="#an-toan">An toàn</a>
+  </nav>
+  <button class="theme" id="theme" type="button" aria-label="Đổi giao diện sáng/tối">◐</button>
+</div></header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Bộ crawler dữ liệu nhà cung cấp</h1>
+    <p>Mỗi website là một folder độc lập, chạy bằng GUI hoặc CLI, tự dừng khi bị chặn, dừng giữa chừng thì chạy lại là tiếp tục. Trang này tóm tắt tech stack và cách dùng trên một màn hình.</p>
+    <div class="stats">
+      <div class="stat"><b>49</b><span>crawler</span></div>
+      <div class="stat"><b>29</b><span>site Việt Nam</span></div>
+      <div class="stat"><b>12</b><span>site quốc tế</span></div>
+      <div class="stat"><b>5 · 3</b><span>site Nhật · Trung</span></div>
+      <div class="stat"><b>1</b><span>file .py + 1 file .bat / site</span></div>
+    </div>
+  </div>
+
+  <section id="kien-truc">
+    <h2>Kiến trúc tổng thể</h2>
+    <p class="lead">Ba cách nhập (GUI, CLI, cột Excel) đi vào cùng một lõi async. Lõi tìm danh sách sản phẩm, tải trang chi tiết, ghi checkpoint sau từng mục rồi xuất Excel.</p>
+    <div class="diagram" role="img" aria-label="Sơ đồ kiến trúc: nhập liệu, lõi, khám phá, lưu trữ, đầu ra">
+      <svg viewBox="0 0 1000 440">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+        <text x="20" y="28" font-weight="700" font-size="13">NHẬP</text>
+        <rect class="layer-in" x="20" y="40" width="230" height="62" rx="10"/>
+        <text x="36" y="66" font-weight="600" font-size="14">GUI (tkinter)</text><text class="sub" x="36" y="88">mở .bat · START / Pause / Stop</text>
+        <rect class="layer-in" x="20" y="116" width="230" height="62" rx="10"/>
+        <text x="36" y="142" font-weight="600" font-size="14">CLI (argparse)</text><text class="mono" x="36" y="164">--mode code|keyword|all</text>
+        <rect class="layer-in" x="20" y="192" width="230" height="62" rx="10"/>
+        <text x="36" y="218" font-weight="600" font-size="14">Cột Excel</text><text class="sub" x="36" y="240">chọn file → sheet → cột mã</text>
+        <text x="300" y="28" font-weight="700" font-size="13">LÕI ASYNC</text>
+        <rect class="layer-core" x="300" y="40" width="320" height="214" rx="12"/>
+        <text x="320" y="68" font-weight="700" font-size="15">Engine</text>
+        <text x="320" y="96" font-size="13">httpx.AsyncClient · pool N client</text>
+        <text class="sub" x="320" y="114">mỗi client 1 cookie riêng</text>
+        <text x="320" y="142" font-size="13">selectolax (lexbor) parse HTML</text>
+        <text x="320" y="170" font-size="13">Semaphore · retry + backoff</text>
+        <text class="sub" x="320" y="188">gặp 429/403/503 → nghỉ 60 s</text>
+        <text x="320" y="216" font-size="13">Circuit breaker · Pause / Stop</text>
+        <text class="sub" x="320" y="234">25 lỗi liên tiếp → dừng, giữ dữ liệu</text>
+        <text x="670" y="28" font-weight="700" font-size="13">KHÁM PHÁ</text>
+        <rect class="layer-disc" x="670" y="40" width="310" height="214" rx="12"/>
+        <text x="690" y="68" font-weight="600" font-size="14">1. API / JSON (ưu tiên số 1)</text>
+        <text class="mono" x="690" y="88">products.json · wp-json</text>
+        <text x="690" y="116" font-weight="600" font-size="14">2. Sitemap XML (nếu mới)</text>
+        <text x="690" y="144" font-weight="600" font-size="14">3. BFS danh mục + phân trang</text>
+        <text class="sub" x="690" y="162">dừng khi hết mục mới</text>
+        <text x="690" y="190" font-weight="600" font-size="14">4. Search mã → khớp chính xác</text>
+        <text x="690" y="218" font-weight="600" font-size="14">5. Gộp nhiều nguồn, bỏ trùng</text>
+        <text class="sub" x="690" y="236">sitemap cũ + quét danh mục</text>
+        <text x="300" y="300" font-weight="700" font-size="13">LƯU TIẾN ĐỘ</text>
+        <rect class="layer-store" x="300" y="312" width="320" height="104" rx="12"/>
+        <text x="320" y="340" font-weight="600" font-size="14">SQLite queue · JSONL · JSON session</text>
+        <text class="sub" x="320" y="362">ghi sau MỖI mục → chạy lại = tiếp tục</text>
+        <text class="mono" x="320" y="390">out_&lt;name&gt;/ checkpoint, log</text>
+        <text x="670" y="300" font-weight="700" font-size="13">ĐẦU RA</text>
+        <rect class="layer-out" x="670" y="312" width="310" height="104" rx="12"/>
+        <text x="690" y="340" font-weight="600" font-size="14">Excel (openpyxl) · Markdown</text>
+        <text class="sub" x="690" y="362">spec gộp 1 cột, ô nào cũng phẳng</text>
+        <text class="mono" x="690" y="390">out_&lt;name&gt;/&lt;name&gt;.xlsx</text>
+        <path class="arrow" d="M250 71H298" marker-end="url(#ah)"/>
+        <path class="arrow" d="M250 147H298" marker-end="url(#ah)"/>
+        <path class="arrow" d="M250 223H298" marker-end="url(#ah)"/>
+        <path class="arrow" d="M620 120H668" marker-end="url(#ah)"/>
+        <path class="arrow" d="M668 180H622" marker-end="url(#ah)"/>
+        <path class="arrow" d="M460 254V310" marker-end="url(#ah)"/>
+        <path class="arrow" d="M620 364H668" marker-end="url(#ah)"/>
+      </svg>
+    </div>
+  </section>
+
+  <section id="stack">
+    <h2>Tech stack</h2>
+    <p class="lead">Mặc định nhẹ, không cần browser. Bị chặn thì leo dần từ cách rẻ nhất: API/JSON → sitemap → httpx → curl_cffi → Playwright → Patchright. Không dùng Selenium. Cập nhật 10/2026.</p>
+    <div class="grid3">
+      <div class="card stack"><h3><span class="dot" style="background:var(--accent)"></span>Mạng</h3>
+        <ul><li><b>httpx</b> async, pool, follow_redirects, timeout</li><li><b>asyncio</b> Semaphore + <b>aiolimiter</b> (req/giây)</li><li><b>curl_cffi</b> khi bị chặn do TLS fingerprint</li><li><b>tenacity</b> retry · tôn trọng <code>Retry-After</code></li><li><b>protego</b> đọc robots.txt</li></ul></div>
+      <div class="card stack"><h3><span class="dot" style="background:var(--violet)"></span>Parse</h3>
+        <ul><li><b>selectolax</b> (lexbor) — nhanh nhất</li><li><b>BeautifulSoup + lxml</b> khi cần full page</li><li>JSON nhúng: <code>__NEXT_DATA__</code>, <code>.js</code>, Store API</li></ul></div>
+      <div class="card stack"><h3><span class="dot" style="background:var(--blue)"></span>Giao diện</h3>
+        <ul><li><b>tkinter + ttk</b> (theme clam), không cần cài thêm</li><li>Log qua <code>queue.Queue</code>, worker thread daemon</li><li><b>argparse</b> CLI chạy headless</li></ul></div>
+      <div class="card stack"><h3><span class="dot" style="background:var(--amber)"></span>Lưu trữ</h3>
+        <ul><li><b>SQLite</b> work-queue (WAL) cho site lớn</li><li><b>JSONL</b> (orjson) / JSON session cho site vừa</li><li><b>openpyxl</b> Excel thường · <b>xlsxwriter</b> file lớn</li><li><b>pydantic</b> chuẩn hoá record (tuỳ chọn)</li></ul></div>
+      <div class="card stack"><h3><span class="dot" style="background:var(--red)"></span>Browser (khi bắt buộc)</h3>
+        <ul><li><b>Playwright / Patchright</b></li><li>warmup trang chủ để lấy cookie Cloudflare</li><li>headed khi headless bị chặn</li></ul></div>
+      <div class="card stack"><h3><span class="dot" style="background:var(--muted)"></span>Chất lượng</h3>
+        <ul><li><b>pytest</b> với HTML thật đã lưu</li><li><b>sites.py doctor</b> soi luật bằng máy</li><li><b>ruff</b> lint/format · <b>uv</b> môi trường</li><li><b>sites.json → SITES.md</b> registry</li></ul></div>
+    </div>
+  </section>
+
+  <section id="luong">
+    <h2>Một lần chạy đi qua những bước nào</h2>
+    <p class="lead">Ví dụ chế độ Crawl ALL. Các chế độ theo mã, từ khoá, link hay Excel bỏ qua bước khám phá toàn site.</p>
+    <div class="diagram" role="img" aria-label="Luồng chạy: recon, khám phá, tải chi tiết, parse, checkpoint, xuất Excel">
+      <svg viewBox="0 0 1000 175">
+        <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+        <rect class="layer-in" x="10" y="30" width="152" height="84" rx="10"/><text x="24" y="60" font-weight="700" font-size="13.5">1 · Khởi động</text><text class="sub" x="24" y="82">tạo pool client</text><text class="sub" x="24" y="100">nạp checkpoint</text>
+        <rect class="layer-disc" x="176" y="30" width="152" height="84" rx="10"/><text x="190" y="60" font-weight="700" font-size="13.5">2 · Khám phá</text><text class="sub" x="190" y="82">sitemap + danh mục</text><text class="sub" x="190" y="100">→ danh sách URL</text>
+        <path class="arrow" d="M162 72H174" marker-end="url(#ah2)"/>
+        <rect class="layer-core" x="342" y="30" width="152" height="84" rx="10"/><text x="356" y="60" font-weight="700" font-size="13.5">3 · Tải chi tiết</text><text class="sub" x="356" y="82">song song N client</text><text class="sub" x="356" y="100">bỏ mục đã xong</text>
+        <path class="arrow" d="M328 72H340" marker-end="url(#ah2)"/>
+        <rect class="layer-core" x="508" y="30" width="152" height="84" rx="10"/><text x="522" y="60" font-weight="700" font-size="13.5">4 · Parse</text><text class="sub" x="522" y="82">tên, mã, giá</text><text class="sub" x="522" y="100">spec, ảnh</text>
+        <path class="arrow" d="M494 72H506" marker-end="url(#ah2)"/>
+        <rect class="layer-store" x="674" y="30" width="152" height="84" rx="10"/><text x="688" y="60" font-weight="700" font-size="13.5">5 · Checkpoint</text><text class="sub" x="688" y="82">ghi từng mục</text><text class="sub" x="688" y="100">Stop vẫn giữ</text>
+        <path class="arrow" d="M660 72H672" marker-end="url(#ah2)"/>
+        <rect class="layer-out" x="840" y="30" width="152" height="84" rx="10"/><text x="854" y="60" font-weight="700" font-size="13.5">6 · Xuất Excel</text><text class="sub" x="854" y="82">cả khi Stop</text><text class="sub" x="854" y="100">hoặc crash</text>
+        <path class="arrow" d="M826 72H838" marker-end="url(#ah2)"/>
+        <path class="arrow" d="M750 116V146H418V118" marker-end="url(#ah2)"/>
+        <text class="sub" x="438" y="164">lặp tới khi hết danh sách · Pause/Stop kiểm ở mọi vòng</text>
+      </svg>
+    </div>
+  </section>
+
+  <section id="dung">
+    <h2>Cách dùng</h2>
+    <p class="lead">Cài một lần, sau đó mỗi site chạy độc lập. Kết quả nằm trong <code>out_&lt;name&gt;/</code> ngay trong folder site.</p>
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="p-install">1. Cài đặt</button>
+      <button role="tab" aria-selected="false" data-tab="p-gui">2. Chạy GUI</button>
+      <button role="tab" aria-selected="false" data-tab="p-cli">3. Chạy CLI</button>
+      <button role="tab" aria-selected="false" data-tab="p-resume">4. Dừng & chạy tiếp</button>
+    </div>
+    <div class="card panel" id="p-install">
+      <b>Python 3.13</b>, rồi cài thư viện:
+      <pre>git clone https://github.com/nhattrung0911/web-crawler
+cd web-crawler
+pip install httpx selectolax openpyxl pandas tenacity pytest
+# chỉ khi crawler cần browser:
+pip install playwright &amp;&amp; playwright install chromium</pre>
+    </div>
+    <div class="card panel" id="p-gui" hidden>
+      Mở file <code>.bat</code> trong folder site (Windows). Chọn chế độ ở cột trái, nhập mã / từ khoá / link hoặc chọn file Excel + cột, bấm <b>START</b>.
+      <pre>_vn\vxanh_com\vxanh.bat</pre>
+      <ul style="color:var(--muted);margin:10px 0 0;padding-left:18px">
+        <li><b style="color:var(--text)">Pause</b>: chặn request mới, request đang chạy làm nốt.</li>
+        <li><b style="color:var(--text)">Stop</b>: dừng trong vài giây, giữ dữ liệu đã có.</li>
+        <li><b style="color:var(--text)">EXPORT</b>: xuất Excel phần đã crawl.</li>
+        <li>Đóng cửa sổ là tắt hẳn, không để process chạy ngầm.</li>
+      </ul>
+    </div>
+    <div class="card panel" id="p-cli" hidden>
+      Mọi crawler chạy được không cần GUI. Xem các chế độ bằng <code>--help</code>.
+      <pre>cd _vn/trungtamthietbi_com
+python trungtamthietbi.py --mode code --code TCK-120-035
+python trungtamthietbi.py --mode keyword --keyword makita --limit 50
+python trungtamthietbi.py --mode all --conc 16 &gt; run.log   # log hiện từng dòng</pre>
+    </div>
+    <div class="card panel" id="p-resume" hidden>
+      Checkpoint ghi sau mỗi mục vào <code>out_&lt;name&gt;/</code>. Stop, Ctrl+C hay mất điện đều không mất phần đã tải.
+      <pre>python trungtamthietbi.py --mode all     # chạy lần 1, bấm Stop giữa chừng
+python trungtamthietbi.py --mode all     # chạy lại: "Resume: 4853 dòng đã xong → bỏ qua"</pre>
+      <p style="color:var(--muted);margin:10px 0 0">Chạy xong trọn vẹn thì checkpoint tự xoá; dừng giữa chừng thì giữ lại.</p>
+    </div>
+  </section>
+
+  <section id="them-site">
+    <h2>Thêm một site mới — 6 bước</h2>
+    <p class="lead">Chi tiết đầy đủ trong <code>AGENTS.md</code>. Đây là bản rút gọn.</p>
+    <ol class="steps">
+      <li><b>Tra registry</b><span><code>python sites.py https://site.com/</code> — đã có thì sửa folder cũ.</span></li>
+      <li><b>Recon: săn API trước</b><span>curl thử <code>/products.json</code>, <code>/wp-json</code>, <code>__NEXT_DATA__</code>; đo thời gian 1 request và thử song song.</span></li>
+      <li><b>Clone archetype sạch gần nhất</b><span>Chọn crawler đạt doctor có cùng nền tảng (Sapo, WooCommerce, PHP SSR…).</span></li>
+      <li><b>Code + .bat</b><span><code>_&lt;vùng&gt;/&lt;domain&gt;/&lt;name&gt;.py</code>; output vào <code>out_&lt;name&gt;/</code>; test với HTML thật.</span></li>
+      <li><b>Kiểm chứng</b><span>Chạy live bằng mã thật · <code>pytest</code> · <code>python -B sites.py doctor &lt;name&gt;</code> phải SẠCH.</span></li>
+      <li><b>Cập nhật registry</b><span>Ghi note recon vào <code>sites.json</code>, chạy <code>python sites.py</code> sinh lại <code>SITES.md</code>.</span></li>
+    </ol>
+  </section>
+
+  <section id="an-toan">
+    <h2>An toàn & bài học đã gặp</h2>
+    <p class="lead">Crawler chạy trên máy người dùng và gọi vào server người khác, nên luật an toàn là bắt buộc. <code>doctor</code> kiểm các luật này bằng máy.</p>
+    <div class="grid2">
+      <div class="card">
+        <table>
+          <tr><th>Luật</th><th>Vì sao</th></tr>
+          <tr><td><code>CIRCUIT_BREAK = 25</code></td><td>Lỗi liên tiếp = nghi bị chặn IP → dừng</td></tr>
+          <tr><td><code>MAX_ITEMS / MAX_PAGES</code></td><td>Chặn vòng lặp vô tận; cắt thì ghi <code>[WARN]</code></td></tr>
+          <tr><td>Backoff 429 + pause toàn cục</td><td>Không dội server khi bị rate-limit</td></tr>
+          <tr><td>Resume checkpoint</td><td>Crawl hàng nghìn mục không làm lại từ đầu</td></tr>
+          <tr><td><code>os._exit(0)</code> khi đóng GUI</td><td>Không để thread / socket chạy ngầm</td></tr>
+          <tr><td>Khớp mã chính xác</td><td>Không lấy nhầm kết quả search đầu tiên</td></tr>
+        </table>
+      </div>
+      <div class="diagram" role="img" aria-label="Session lock: một client chạy tuần tự, nhiều client chạy song song">
+        <svg viewBox="0 0 440 250" style="min-width:0">
+          <text x="14" y="24" font-weight="700" font-size="14">Bẫy: server PHP khoá session</text>
+          <text class="sub" x="14" y="42">8 request song song, đo thật</text>
+          <text x="14" y="74" font-size="12" font-weight="600">1 client (1 cookie)</text>
+          <g><rect class="layer-bad" x="140" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="176" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="212" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="248" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="284" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="320" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="356" y="62" width="34" height="16" rx="3"/><rect class="layer-bad" x="392" y="62" width="34" height="16" rx="3"/></g>
+          <text class="sub" x="140" y="96">xếp hàng từng cái → 48 giây</text>
+          <text x="14" y="134" font-size="12" font-weight="600">8 client riêng</text>
+          <g><rect class="layer-core" x="140" y="118" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="129" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="140" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="151" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="162" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="173" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="184" width="34" height="9" rx="2"/><rect class="layer-core" x="140" y="195" width="34" height="9" rx="2"/></g>
+          <text class="sub" x="184" y="164">chạy cùng lúc → 8 giây</text>
+          <text class="sub" x="14" y="222">Dấu hiệu: chạy song song mà không nhanh hơn.</text><text class="sub" x="14" y="240">Cách sửa: pool N client, mỗi client 1 cookie.</text>
+        </svg>
+      </div>
+    </div>
+    <div class="callout"><b>Dùng có trách nhiệm.</b> Tôn trọng robots.txt và điều khoản từng website, giữ số luồng vừa phải, chỉ lấy dữ liệu công khai.</div>
+  </section>
+</main>
+
+<footer><div class="wrap">Mã nguồn: <a href="https://github.com/nhattrung0911/web-crawler">github.com/nhattrung0911/web-crawler</a> · Quy chuẩn chi tiết trong <code>AGENTS.md</code></div></footer>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('theme');
+  try{var saved=localStorage.getItem('theme'); if(saved) root.setAttribute('data-theme',saved);}catch(e){}
+  btn.addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);
+    var next=dark?'light':'dark'; root.setAttribute('data-theme',next);
+    try{localStorage.setItem('theme',next);}catch(e){}
+  });
+  var tabs=document.querySelectorAll('.tabs button');
+  tabs.forEach(function(t){t.addEventListener('click',function(){
+    tabs.forEach(function(x){x.setAttribute('aria-selected','false');document.getElementById(x.dataset.tab).hidden=true;});
+    t.setAttribute('aria-selected','true');document.getElementById(t.dataset.tab).hidden=false;
+  });});
+})();
+</script>
+</body>
+</html>

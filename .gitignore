@@ -46,3 +46,6 @@ __pycache__/
 !requirements.txt
 !sites.json
 !product_crawl_schema.json
+
+# ===== Cache Cloudflare wrangler (co account id / email) =====
+.wrangler/

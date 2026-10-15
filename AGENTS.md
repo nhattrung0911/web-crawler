@@ -9,7 +9,9 @@
 
 ---
 
-## BẮT ĐẦU NHANH — agent mới đọc mục này trước (cập nhật 2026-10-02)
+## BẮT ĐẦU NHANH — agent mới đọc mục này trước (cập nhật 2026-10-15)
+
+**Sơ đồ tech stack + cách dùng (1 trang, dễ nhìn):** https://web-crawler-diagram.pages.dev
 
 **Môi trường:** Windows, Python 3.13. Mọi lệnh chạy từ thư mục `WORX GREEN/`.
 ```bash
@@ -136,13 +138,12 @@ thành test chạy được** trong `sites.py` (hàm `doctor()`, danh sách `RUL
 **Thêm luật mới = thêm 1 dòng vào `RULES`**, KHÔNG phải viết thêm md. Luật nào không kiểm được
 bằng máy thì mới ghi md. `doctor` trả exit code 1 nếu có vi phạm → cắm được vào CI/hook.
 
-> **Hiện trạng 2026-10-02:** 57 site, **23 SẠCH / 34 còn vi phạm**. Vi phạm là nợ code cũ, gồm:
+> **Hiện trạng 2026-10-15:** 57 site, **24 SẠCH / 33 còn vi phạm**. Vi phạm là nợ code cũ, gồm:
 > - 27 site thiếu circuit breaker.
 > - 23 site thiếu resume.
 > - 6 site có worker GUI không bắt `BaseException`.
 > - 5 site export chưa gộp `Thong so`.
 > - 1 site còn Selenium.
-> - 1 site có file rác.
 >
 > Dọn dần KHI ĐỤNG TỚI site đó. Không refactor hàng loạt nếu user không yêu cầu.
 > Xem danh sách: `python -B sites.py doctor`.
@@ -207,6 +208,31 @@ bằng máy thì mới ghi md. `doctor` trả exit code 1 nếu có vi phạm �
 
 Chỉ dùng browser (Playwright/Patchright) khi site **JS-heavy / anti-bot mạnh**.
 Site tĩnh hay có API → KHÔNG vác browser vào.
+
+### Bổ sung 2026-10 (đã kiểm phiên bản + license trên PyPI ngày 2026-10-15)
+Áp dụng cho crawler **MỚI** và khi đụng tới crawler cũ. KHÔNG viết lại crawler đang chạy tốt chỉ để đổi thư viện.
+
+| Thư viện | Bản (ngày) | Dùng khi | Ghi chú |
+|---|---|---|---|
+| `curl_cffi` | 0.16.3 (09/2026), MIT | httpx bị 403 / trang challenge do **TLS fingerprint** | Có `AsyncSession` kiểu requests, giả lập TLS/HTTP2 của Chrome. Rẻ hơn mở browser nhiều. |
+| `aiolimiter` | 1.3.0 (09/2026), MIT | **Mọi crawler mới**: giới hạn req/giây theo host | Semaphore chỉ giới hạn số request ĐỒNG THỜI, không giới hạn TỐC ĐỘ. Dùng cả hai. |
+| `protego` | 0.7.0 (09/2026), BSD | Đọc `robots.txt` + `crawl-delay` | Parser của Scrapy. Đọc 1 lần lúc khởi động, kiểm `can_fetch`. |
+| `orjson` | 3.13.0 (10/2026) | Ghi/đọc JSONL checkpoint, API JSON lớn | `orjson.dumps` trả **bytes** → mở file chế độ `ab`. |
+| `xlsxwriter` | 3.2.9 (09/2025), BSD | Xuất Excel **lớn** (> ~50k dòng) | `constant_memory` không ngốn RAM. `openpyxl` giữ cho đọc/sửa file có sẵn. |
+| `pydantic` v2 | 2.14 (10/2026), MIT | Chuẩn hoá record (SKU, giá, URL) | 1 model / loại record; chuẩn hoá trong model, KHÔNG trong exporter. Tuỳ chọn. |
+| `ruff` | 0.17 (10/2026), MIT | Lint + format trước khi giao | `ruff check <file>` · `ruff format <file>`. |
+| `uv` | 0.13 (10/2026) | Quản lý môi trường, chạy script 1 file | Header PEP 723 (`# /// script`) khai báo thư viện ngay trong `<name>.py`. Tuỳ chọn. |
+
+**Thang leo khi bị chặn — thử cái RẺ trước, ghi lý do leo vào note `sites.json`:**
+JSON/XHR API → sitemap → `httpx` → `curl_cffi` (giả lập TLS) → Playwright → Patchright.
+
+**Luật mới:**
+- Công cụ giả lập/stealth CHỈ dùng cho site chặn client thường. Vẫn tôn trọng `robots.txt`, `crawl-delay`, điều khoản site; giữ tốc độ thấp.
+- Có `Retry-After` trong phản hồi 429/503 → chờ đúng số giây đó trước khi retry.
+- Dữ liệu có cấu trúc trước, CSS selector sau: `__NEXT_DATA__` / JSON-LD (`<script type="application/ld+json">` → `json.loads`) / API.
+- **Kiểm license trước khi thêm thư viện:** tránh GPL/AGPL (`ultimate-sitemap-parser` GPL-3, `nodriver` AGPL). Sitemap tự viết ~40 dòng (xử lý index lồng nhau + `.gz`).
+- `selectolax` vừa lên **1.0.0 (03/10/2026)**; máy đang dùng 0.4.x. Nâng cấp thì chạy lại toàn bộ test fixture trước.
+- KHÔNG dùng làm mặc định: Crawlee, Scrapling (chưa 1.0), rnet (GPL), nodriver (AGPL), Camoufox (chưa 1.0) — chỉ cân nhắc từng ca, ghi lý do.
 
 ---
 
@@ -437,6 +463,7 @@ dùng `session_start()` sẽ XẾP HÀNG mọi request cùng `PHPSESSID`.
 ### Rate limit
 - **Token-bucket** `rate_limit_per_second` + async lock (ZCWZ) — mịn hơn semaphore.
 - Hoặc `delay` per-request cấu hình (mặc định 0.05–0.2s) + semaphore/thread-pool.
+- Crawler MỚI: `aiolimiter.AsyncLimiter(<req>, 1)` theo host + Semaphore (xem §2 "Bổ sung 2026-10").
 
 ---
 
@@ -601,6 +628,7 @@ if self.stop_evt.is_set(): return
 - [ ] Test Stop / Pause / đóng-cửa-sổ / **resume-sau-Stop** → không process ma, RAM ổn.
 - [ ] Export Excel mở được (cột spec đúng, mã miss vẫn có dòng).
 - [ ] `<name>.bat` tạo sẵn cạnh `<name>.py` (`@echo off` / `cd /d "%~dp0"` / `python <name>.py %*` / `if errorlevel 1 pause`).
+- [ ] Crawler mới: có giới hạn req/giây (`aiolimiter`) + đọc `robots.txt` (`protego`); `ruff check` sạch; thư viện mới không GPL/AGPL (§2 Bổ sung 2026-10).
 - [ ] Test pytest `tests/<name>/` với fixture HTML THẬT (đủ mọi template/ngôn ngữ crawler dùng) → pass.
 - [ ] **Đi hết 13 BẪY ĐÃ DÍNH THẬT ở §10**:
       - URL bị upper, link trộn code, checkpoint nạp 2 lần.
