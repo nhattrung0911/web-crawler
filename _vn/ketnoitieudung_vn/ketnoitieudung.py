@@ -1,0 +1,795 @@
+import os
+import re
+import sys
+import time
+import queue
+import threading
+import json
+import asyncio
+import aiohttp
+from tkinter import *
+from tkinter import ttk
+from tkinter import filedialog
+from tkinter import messagebox
+import pandas as pd
+from bs4 import BeautifulSoup
+
+# Helper function to clean text from rich HTML descriptions
+def clean_rich_description(html_content):
+    if not html_content:
+        return ""
+    try:
+        soup_content = BeautifulSoup(html_content, 'lxml')
+    except Exception:
+        soup_content = BeautifulSoup(html_content, 'html.parser')
+        
+    import copy
+    el_copy = copy.copy(soup_content)
+    for br in el_copy.find_all('br'):
+        br.replace_with('\n')
+    for p_tag in el_copy.find_all('p'):
+        p_tag.insert_before('\n')
+        
+    text = el_copy.get_text().strip()
+    # Clean multiple spaces or redundant blank lines
+    lines = [line.strip() for line in text.split('\n')]
+    clean_lines = []
+    for line in lines:
+        if line:
+            clean_lines.append(line)
+        elif clean_lines and clean_lines[-1] != "":
+            clean_lines.append("")
+    return "\n".join(clean_lines).strip()
+
+# Async crawler helper functions
+async def search_product_url_async(sku, session):
+    """
+    Uses Ket Noi Tieu Dung's POST JSON search API to find the product details asynchronously.
+    Extremely fast and avoids downloading heavy HTML pages.
+    """
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json, text/javascript, */*; q=0.01'
+    }
+    url = "https://www.ketnoitieudung.vn/search-products"
+    payload = f"keyword={sku}&category=0"
+    
+    try:
+        async with session.post(url, headers=headers, data=payload, timeout=10) as r:
+            if r.status == 200:
+                data = await r.json()
+                if data.get('status') == 'success':
+                    products = data.get('products', [])
+                    if products:
+                        sku_lower = sku.lower()
+                        best_match = None
+                        # Prioritize exact matching product code or name containing the SKU
+                        for p in products:
+                            p_code = str(p.get('productCode', '')).lower()
+                            p_name = str(p.get('name', '')).lower()
+                            if sku_lower == p_code:
+                                best_match = p
+                                break
+                            elif sku_lower in p_name:
+                                if not best_match:
+                                    best_match = p
+                        # Fallback to the first matching product
+                        if not best_match:
+                            best_match = products[0]
+                        return best_match
+    except Exception:
+        pass
+    return None
+
+async def fetch_product_details_async(search_meta, sku, session):
+    """
+    Fetches the HTML page of a product to extract Breadcrumbs and Specifications,
+    merging them with API metadata for 100% precision.
+    """
+    full_url = search_meta.get('url_details')
+    if not full_url:
+        raise Exception("Invalid product detail URL")
+        
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    async with session.get(full_url, headers=headers, timeout=10) as r:
+        if r.status != 200:
+            raise Exception(f"HTTP Status {r.status}")
+        html_text = await r.text()
+        
+    try:
+        soup = BeautifulSoup(html_text, 'lxml')
+    except Exception:
+        soup = BeautifulSoup(html_text, 'html.parser')
+    
+    # 1. Breadcrumbs / Categories
+    # Skip "Trang chủ" (index 0)
+    breadcrumbs = soup.select('.breadcrumb li')
+    categories = []
+    for li in breadcrumbs:
+        a_tag = li.find('a')
+        text = a_tag.text.strip() if a_tag else li.text.strip()
+        text = text.rstrip('/').strip()
+        if text and text != '/':
+            categories.append(text)
+            
+    if categories and categories[0] == 'Trang chủ':
+        categories = categories[1:]
+        
+    # 2. Product Name
+    name = search_meta.get('name') or ""
+    if not name:
+        name_el = soup.select_one('h1')
+        name = name_el.text.strip() if name_el else ""
+    
+    # 3. Detailed Description (Summary)
+    content_html = search_meta.get('content')
+    summary = clean_rich_description(content_html)
+    if not summary:
+        desc_el = soup.select_one('div.product__description') or soup.select_one('.product-tabs__pane--active')
+        if desc_el:
+            summary = clean_rich_description(str(desc_el))
+            
+    # 4. Prices
+    # Price before discount (original price)
+    price_before = search_meta.get('price_text') or ""
+    if price_before and not price_before.endswith("₫"):
+        price_before = price_before.strip() + "₫"
+        
+    # Price after discount (current price)
+    price_after_raw = search_meta.get('price_discount_text')
+    if price_after_raw and str(price_after_raw).strip().lower() != "none" and str(price_after_raw).strip() != "":
+        price_after = str(price_after_raw).strip()
+        if not price_after.endswith("₫"):
+            price_after = price_after + "₫"
+    else:
+        price_after = price_before
+        
+    # 5. Image Link
+    img_url = search_meta.get('avatar') or search_meta.get('thumbnail') or ""
+    if img_url:
+        if img_url.startswith('//'):
+            img_url = 'https:' + img_url
+        elif img_url.startswith('/'):
+            img_url = 'https://www.ketnoitieudung.vn' + img_url
+        elif not img_url.startswith('http'):
+            img_url = 'https://www.ketnoitieudung.vn/' + img_url
+            
+    # 6. Technical Specifications Table (Spec)
+    spec_table = soup.select_one('table.table-striped') or soup.select_one('.spec__section table')
+    specs = []
+    if spec_table:
+        for tr in spec_table.find_all('tr'):
+            tds = [td.text.strip() for td in tr.find_all(['td', 'th'])]
+            if len(tds) >= 2:
+                specs.append(f"{tds[0]}: {tds[1]}")
+    spec_str = "\n".join(specs)
+    
+    # 7. Additional metadata
+    origin = search_meta.get('xuatxu') or ""
+    warranty = search_meta.get('baohanh') or ""
+    
+    return {
+        'SKU': sku,
+        'Product Code': search_meta.get('productCode', ''),
+        'URL': full_url,
+        'categories': categories,
+        'Name': name,
+        'Summary': summary,
+        'Price After': price_after,
+        'Price Before': price_before,
+        'Image Link': img_url,
+        'Specs': spec_str,
+        'Origin': origin,
+        'Warranty': warranty
+    }
+
+class CrawlerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Ket Noi Tieu Dung Ultra-Fast Async Product Crawler")
+        self.root.geometry("900x670")
+        self.root.minsize(800, 550)
+        
+        # State variables
+        self.is_running = False
+        self.is_paused = False
+        self.skus_to_crawl = []
+        self.crawled_results = []
+        self.file_rows = []
+        self.session_lock = threading.Lock()
+        
+        # Initialize background event loop thread for Asyncio operations
+        self.loop = asyncio.new_event_loop()
+        def start_loop(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+        self.loop_thread = threading.Thread(target=start_loop, args=(self.loop,), daemon=True)
+        self.loop_thread.start()
+        
+        # Queue for GUI-thread safe communications
+        self.log_queue = queue.Queue()
+        
+        # Design configuration: Premium Forest Green Theme
+        self.bg_color = "#f4f7f6"
+        self.primary_color = "#1e4620"  # Forest Green
+        self.accent_color = "#388e3c"
+        self.text_color = "#333333"
+        
+        self.configure_styles()
+        self.build_ui()
+        
+        # Periodic GUI update checker
+        self.root.after(100, self.process_logs)
+
+    def configure_styles(self):
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        style.configure("TFrame", background=self.bg_color)
+        style.configure("TLabel", background=self.bg_color, foreground=self.text_color, font=("Segoe UI", 10))
+        style.configure("Title.TLabel", background=self.bg_color, foreground=self.primary_color, font=("Segoe UI Semibold", 16, "bold"))
+        style.configure("TEntry", fieldbackground="white", font=("Segoe UI", 10))
+        style.configure("TButton", font=("Segoe UI Semibold", 10), background="#e0e0e0", borderwidth=1)
+        style.map("TButton", background=[('active', '#d0d0d0')])
+        
+        # Custom primary action button
+        style.configure("Primary.TButton", font=("Segoe UI Semibold", 10, "bold"), background=self.primary_color, foreground="white")
+        style.map("Primary.TButton", background=[('active', self.accent_color)])
+
+    def build_ui(self):
+        self.root.configure(bg=self.bg_color)
+        
+        # Top Header Area
+        header_frame = ttk.Frame(self.root, padding=(15, 10, 15, 10))
+        header_frame.pack(fill=X)
+        
+        header_lbl = ttk.Label(header_frame, text="KET NOI TIEU DUNG CRAWLER (ASYNC)", style="Title.TLabel")
+        header_lbl.pack(side=LEFT)
+        
+        sub_lbl = ttk.Label(header_frame, text=" |   Ultra-Fast Async API & spec extraction engine", font=("Segoe UI", 9, "italic"), foreground="#666666")
+        sub_lbl.pack(side=LEFT, pady=5)
+        
+        # Main Layout split into Left Panel (controls) and Right Panel (logs)
+        main_pane = ttk.Frame(self.root, padding=10)
+        main_pane.pack(fill=BOTH, expand=YES)
+        
+        # Left Panel (Input / Configurations)
+        left_panel = ttk.LabelFrame(main_pane, text=" Crawl Configurations ", padding=15, width=320)
+        left_panel.pack(side=LEFT, fill=BOTH, expand=NO, padx=(0, 10))
+        
+        # Group 1: Import Excel (Max 5)
+        excel_hdr_frame = ttk.Frame(left_panel)
+        excel_hdr_frame.pack(fill=X, pady=(0, 5))
+        
+        ttk.Label(excel_hdr_frame, text="1. Excel Files (Max 5):", font=("Segoe UI Semibold", 9)).pack(side=LEFT)
+        
+        browse_btn = ttk.Button(excel_hdr_frame, text="Select Files...", width=12, command=self.browse_excel)
+        browse_btn.pack(side=RIGHT)
+        
+        # Container for dynamic files configuration
+        self.files_config_frame = ttk.Frame(left_panel)
+        self.files_config_frame.pack(fill=X, pady=(0, 15))
+        
+        self.placeholder_label = ttk.Label(self.files_config_frame, text="No files selected", font=("Segoe UI", 9, "italic"), foreground="#888888")
+        self.placeholder_label.pack(pady=10)
+        
+        # Manual SKU Input
+        ttk.Label(left_panel, text="OR Input SKUs directly (one per line):", font=("Segoe UI Semibold", 9)).pack(anchor=W, pady=(0, 5))
+        self.manual_text = Text(left_panel, height=8, wrap=WORD, font=("Segoe UI", 9), relief=SOLID, borderwidth=1)
+        self.manual_text.pack(fill=X, pady=(0, 15))
+        
+        # Thread count / Speed configuration
+        speed_frame = ttk.Frame(left_panel)
+        speed_frame.pack(fill=X, pady=(0, 15))
+        
+        ttk.Label(speed_frame, text="Max Concurrency:", font=("Segoe UI Semibold", 9)).grid(row=0, column=0, sticky=W, pady=5)
+        self.thread_spin = Spinbox(speed_frame, from_=1, to=30, width=5, justify=CENTER)
+        self.thread_spin.delete(0, "end")
+        self.thread_spin.insert(0, "15")
+        self.thread_spin.grid(row=0, column=1, sticky=E, padx=(10, 0))
+        
+        ttk.Label(speed_frame, text="Delay (s):", font=("Segoe UI Semibold", 9)).grid(row=1, column=0, sticky=W, pady=5)
+        self.delay_spin = Spinbox(speed_frame, from_=0.0, to=5.0, increment=0.1, width=5, justify=CENTER)
+        self.delay_spin.delete(0, "end")
+        self.delay_spin.insert(0, "0.1")
+        self.delay_spin.grid(row=1, column=1, sticky=E, padx=(10, 0))
+        
+        # Control Buttons
+        self.start_btn = ttk.Button(left_panel, text="START CRAWL", style="Primary.TButton", command=self.start_crawl)
+        self.start_btn.pack(fill=X, pady=(0, 10))
+        
+        control_sub_frame = ttk.Frame(left_panel)
+        control_sub_frame.pack(fill=X, pady=(0, 10))
+        
+        self.pause_btn = ttk.Button(control_sub_frame, text="Pause", state=DISABLED, command=self.toggle_pause)
+        self.pause_btn.pack(side=LEFT, fill=X, expand=YES, padx=(0, 5))
+        
+        self.stop_btn = ttk.Button(control_sub_frame, text="Stop", state=DISABLED, command=self.stop_crawl)
+        self.stop_btn.pack(side=RIGHT, fill=X, expand=YES, padx=(5, 0))
+        
+        self.export_btn = ttk.Button(left_panel, text="EXPORT RESULTS (EXCEL)", state=DISABLED, command=self.export_results)
+        self.export_btn.pack(fill=X, pady=(10, 0))
+        
+        # Right Panel (Console Logs & Progress Indicators)
+        right_panel = ttk.LabelFrame(main_pane, text=" Live Console Log & Progress ", padding=15)
+        right_panel.pack(side=RIGHT, fill=BOTH, expand=YES)
+        
+        # Progress Bar & Metrics
+        progress_info_frame = ttk.Frame(right_panel)
+        progress_info_frame.pack(fill=X, pady=(0, 5))
+        
+        self.progress_lbl = ttk.Label(progress_info_frame, text="Idle", font=("Segoe UI Semibold", 10))
+        self.progress_lbl.pack(side=LEFT)
+        
+        self.stats_lbl = ttk.Label(progress_info_frame, text="0 / 0 Completed (0 Failed)", font=("Segoe UI", 9), foreground="#555555")
+        self.stats_lbl.pack(side=RIGHT)
+        
+        self.progress_bar = ttk.Progressbar(right_panel, orient=HORIZONTAL, mode="determinate")
+        self.progress_bar.pack(fill=X, pady=(0, 15))
+        
+        # Console Display
+        self.console = Text(right_panel, wrap=WORD, font=("Consolas", 9), bg="#1e1e1e", fg="#d4d4d4", insertbackground="white", relief=FLAT)
+        self.console.pack(fill=BOTH, expand=YES)
+        
+        # Scrollbar for console
+        scrollbar = ttk.Scrollbar(self.console, command=self.console.yview)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.console.config(yscrollcommand=scrollbar.set)
+        
+        # Initialize Console Greeting
+        self.write_console("[SYS] System Initialized. Ready to import Excel or input SKU codes for Ket Noi Tieu Dung.\n")
+
+    def write_console(self, text):
+        self.console.config(state=NORMAL)
+        self.console.insert(END, text)
+        self.console.see(END)
+        self.console.config(state=DISABLED)
+
+    def make_updater(self, filepath, sheet_combo, col_combo):
+        return lambda event: self.update_columns_for_row(filepath, sheet_combo, col_combo)
+
+    def update_columns_for_row(self, filepath, sheet_combo, col_combo):
+        sheet_name = sheet_combo.get()
+        if not sheet_name:
+            return
+        try:
+            df = pd.read_excel(filepath, sheet_name=sheet_name, nrows=5)
+            columns = list(df.columns)
+            col_combo['values'] = columns
+            if columns:
+                sku_col = ""
+                for col in columns:
+                    col_lower = str(col).lower()
+                    if 'sku' in col_lower or 'mã' in col_lower or 'code' in col_lower or 'model' in col_lower:
+                        sku_col = col
+                        break
+                if sku_col:
+                    col_combo.set(sku_col)
+                else:
+                    col_combo.set(columns[0])
+        except Exception as e:
+            self.write_console(f"[ERROR] Failed to load columns for {os.path.basename(filepath)}: {str(e)}\n")
+
+    def browse_excel(self):
+        file_paths = filedialog.askopenfilenames(filetypes=[("Excel Files", "*.xlsx;*.xls")])
+        if not file_paths:
+            return
+            
+        file_paths = list(file_paths)
+        if len(file_paths) > 5:
+            messagebox.showwarning("Limit Exceeded", "Bạn chỉ được chọn tối đa 5 file Excel. Chương trình sẽ tự động lấy 5 file đầu tiên.")
+            file_paths = file_paths[:5]
+            
+        # Clean existing rows
+        for widget in self.files_config_frame.winfo_children():
+            widget.destroy()
+        self.file_rows = []
+        
+        # Add headers for the columns in dynamic config
+        headers_frame = ttk.Frame(self.files_config_frame)
+        headers_frame.pack(fill=X, pady=(5, 2))
+        
+        lbl_file = ttk.Label(headers_frame, text="File Name", font=("Segoe UI Semibold", 8), width=15, anchor=W)
+        lbl_file.pack(side=LEFT, padx=(0, 5))
+        
+        lbl_sheet = ttk.Label(headers_frame, text="Sheet", font=("Segoe UI Semibold", 8), width=11, anchor=W)
+        lbl_sheet.pack(side=LEFT, padx=(0, 5), fill=X, expand=YES)
+        
+        lbl_col = ttk.Label(headers_frame, text="SKU Col", font=("Segoe UI Semibold", 8), width=11, anchor=W)
+        lbl_col.pack(side=LEFT, fill=X, expand=YES)
+        
+        # Build configuration row for each file
+        for path in file_paths:
+            try:
+                xl = pd.ExcelFile(path)
+                sheets = xl.sheet_names
+            except Exception as e:
+                self.write_console(f"[ERROR] Could not read sheets from {os.path.basename(path)}: {str(e)}\n")
+                continue
+                
+            row_frame = ttk.Frame(self.files_config_frame)
+            row_frame.pack(fill=X, pady=2)
+            
+            # File name label
+            fname = os.path.basename(path)
+            short_name = fname if len(fname) <= 15 else fname[:12] + "..."
+            lbl = ttk.Label(row_frame, text=short_name, width=15, anchor=W)
+            lbl.pack(side=LEFT, padx=(0, 5))
+            
+            # Sheet combobox
+            sheet_combo = ttk.Combobox(row_frame, state="readonly", width=11)
+            sheet_combo['values'] = sheets
+            sheet_combo.pack(side=LEFT, padx=(0, 5), fill=X, expand=YES)
+            
+            # SKU Column combobox
+            col_combo = ttk.Combobox(row_frame, state="readonly", width=11)
+            col_combo.pack(side=LEFT, fill=X, expand=YES)
+            
+            # Add to file_rows state
+            row_data = {
+                'filepath': path,
+                'sheet_combo': sheet_combo,
+                'col_combo': col_combo
+            }
+            self.file_rows.append(row_data)
+            
+            # Bind event and initialize columns
+            sheet_combo.bind("<<ComboboxSelected>>", self.make_updater(path, sheet_combo, col_combo))
+            if sheets:
+                sheet_combo.set(sheets[0])
+                self.update_columns_for_row(path, sheet_combo, col_combo)
+                
+        self.write_console(f"[SYS] Loaded {len(self.file_rows)} Excel file config rows. Adjust Sheet/SKU columns if needed.\n")
+
+    def get_session_file_path(self):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ketnoitieudung_session.json")
+
+    def save_session(self):
+        with self.session_lock:
+            try:
+                files_config = []
+                for row in self.file_rows:
+                    files_config.append({
+                        'filepath': row['filepath'],
+                        'sheet_name': row['sheet_combo'].get(),
+                        'col_name': row['col_combo'].get()
+                    })
+                
+                session_data = {
+                    'files_config': files_config,
+                    'skus_to_crawl': self.skus_to_crawl,
+                    'crawled_results': self.crawled_results,
+                }
+                with open(self.get_session_file_path(), 'w', encoding='utf-8') as f:
+                    json.dump(session_data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+    def clear_session(self):
+        path = self.get_session_file_path()
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+    def process_logs(self):
+        """
+        Pulls messages from the background thread log queue and updates GUI securely.
+        """
+        while not self.log_queue.empty():
+            msg_type, data = self.log_queue.get()
+            
+            if msg_type == "log":
+                self.write_console(data)
+            elif msg_type == "progress":
+                val, max_val = data
+                self.progress_bar['value'] = val
+                self.progress_bar['maximum'] = max_val
+            elif msg_type == "stats":
+                completed, total, failed = data
+                self.stats_lbl.config(text=f"{completed} / {total} Completed ({failed} Failed)")
+                percent = int((completed / total) * 100) if total > 0 else 0
+                self.progress_lbl.config(text=f"Crawling ({percent}%)")
+            elif msg_type == "done":
+                self.is_running = False
+                self.start_btn.config(state=NORMAL)
+                self.pause_btn.config(state=DISABLED, text="Pause")
+                self.stop_btn.config(state=DISABLED)
+                self.export_btn.config(state=NORMAL)
+                self.progress_lbl.config(text="Complete")
+                messagebox.showinfo("Success", "Crawl Process finished! You can now Export results.")
+            elif msg_type == "error_dialog":
+                messagebox.showerror("Crawl Error", data)
+                
+        self.root.after(100, self.process_logs)
+
+    def toggle_pause(self):
+        if not self.is_running:
+            return
+        
+        if self.is_paused:
+            self.is_paused = False
+            self.pause_btn.config(text="Pause")
+            self.write_console("[SYS] Crawl Resumed.\n")
+        else:
+            self.is_paused = True
+            self.pause_btn.config(text="Resume")
+            self.write_console("[SYS] Crawl Paused.\n")
+
+    def stop_crawl(self):
+        if messagebox.askyesno("Confirm Stop", "Do you want to stop the crawling process? Current results will be preserved."):
+            self.is_running = False
+            self.is_paused = False
+            self.write_console("[SYS] Crawling process aborted by user.\n")
+            self.start_btn.config(state=NORMAL)
+            self.pause_btn.config(state=DISABLED, text="Pause")
+            self.stop_btn.config(state=DISABLED)
+            self.export_btn.config(state=NORMAL)
+            self.progress_lbl.config(text="Aborted")
+
+    def start_crawl(self):
+        # 1. Gather SKU codes
+        self.skus_to_crawl = []
+        
+        # Get manual inputs
+        manual_val = self.manual_text.get("1.0", "end-1c").strip()
+        manual_skus = []
+        if manual_val:
+            manual_skus = [s.strip() for s in re.split(r'[\n,]', manual_val) if s.strip()]
+            
+        # Get Excel inputs
+        excel_skus = []
+        if self.file_rows:
+            self.write_console(f"[SYS] Loading SKUs from {len(self.file_rows)} Excel file(s)...\n")
+            for row in self.file_rows:
+                path = row['filepath']
+                sheet_name = row['sheet_combo'].get()
+                col_name = row['col_combo'].get()
+                
+                if not sheet_name or not col_name:
+                    continue
+                
+                try:
+                    df = pd.read_excel(path, sheet_name=sheet_name)
+                    if col_name in df.columns:
+                        vals = df[col_name].dropna().astype(str).tolist()
+                        row_skus = [s.strip() for s in vals if s.strip()]
+                        excel_skus.extend(row_skus)
+                        self.write_console(f"[SYS] Loaded {len(row_skus)} SKUs from file: {os.path.basename(path)} (Sheet: '{sheet_name}', Col: '{col_name}')\n")
+                    else:
+                        self.write_console(f"[WARN] Column '{col_name}' not found in file: {os.path.basename(path)}\n")
+                except Exception as e:
+                    self.write_console(f"[ERROR] Failed to read {os.path.basename(path)}: {str(e)}\n")
+                    
+        # Combine and deduplicate
+        all_skus = manual_skus + excel_skus
+        seen = set()
+        self.skus_to_crawl = []
+        for s in all_skus:
+            if s not in seen:
+                seen.add(s)
+                self.skus_to_crawl.append(s)
+                    
+        if not self.skus_to_crawl:
+            messagebox.showerror("No Inputs", "Please import Excel file(s) or enter SKU codes manually in the text area.")
+            return
+            
+        # Validate speed configs
+        try:
+            num_threads = int(self.thread_spin.get())
+            delay = float(self.delay_spin.get())
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please ensure concurrency limit is an integer and delay is a float value.")
+            return
+            
+        # 2. Reset crawler state
+        self.is_running = True
+        self.is_paused = False
+        self.crawled_results = []
+        
+        # Check for resume session
+        session_file = self.get_session_file_path()
+        resumed = False
+        if os.path.exists(session_file):
+            try:
+                with open(session_file, 'r', encoding='utf-8') as f:
+                    s_data = json.load(f)
+                
+                # Check if current SKUs match session SKUs
+                if s_data.get('skus_to_crawl') == self.skus_to_crawl:
+                    crawled_count = len(s_data.get('crawled_results', []))
+                    total_count = len(self.skus_to_crawl)
+                    if crawled_count > 0 and crawled_count < total_count:
+                        if messagebox.askyesno("Resume Session", f"Found a previous unfinished crawl session ({crawled_count}/{total_count} SKUs crawled).\n\nDo you want to RESUME from where you left off?"):
+                            self.crawled_results = s_data.get('crawled_results', [])
+                            resumed = True
+                            self.write_console(f"[SYS] Resuming session. Skipping {crawled_count} already crawled SKUs.\n")
+            except Exception as e:
+                self.write_console(f"[WARN] Failed to load session file: {str(e)}. Starting fresh.\n")
+                
+        if not resumed:
+            self.clear_session()
+            
+        self.start_btn.config(state=DISABLED)
+        self.pause_btn.config(state=NORMAL)
+        self.stop_btn.config(state=NORMAL)
+        self.export_btn.config(state=DISABLED)
+        self.progress_lbl.config(text="Initializing...")
+        
+        self.write_console(f"\n--- Crawling Started (Asyncio Core): {len(self.skus_to_crawl)} SKUs found. Concurrency: {num_threads} ---\n")
+        
+        # Submit async coroutine worker to the background event loop
+        asyncio.run_coroutine_threadsafe(
+            self.async_crawl_worker(self.skus_to_crawl, num_threads, delay, resumed),
+            self.loop
+        )
+
+    async def async_crawl_worker(self, sku_list, max_concurrency, delay, resumed=False):
+        total_skus = len(sku_list)
+        
+        crawled_skus = set()
+        completed = 0
+        failed = 0
+        if resumed:
+            with self.session_lock:
+                crawled_skus = {r['SKU'] for r in self.crawled_results if 'SKU' in r}
+                completed = len(crawled_skus)
+                failed = sum(1 for r in self.crawled_results if r.get('Status') in ['Error', 'Not Found'])
+                
+        # Filter target SKUs that need parsing
+        target_skus = [s for s in sku_list if not (resumed and s in crawled_skus)]
+        
+        # Configure aiohttp TCP Connector and Client Session with limits
+        connector = aiohttp.TCPConnector(limit=max_concurrency)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            
+            # Semaphore to enforce concurrency limit cleanly
+            sem = asyncio.Semaphore(max_concurrency)
+            results_lock = asyncio.Lock()
+            
+            async def crawl_one(sku):
+                nonlocal completed, failed
+                async with sem:
+                    if not self.is_running:
+                        return
+                        
+                    # Handle pause state
+                    while self.is_paused and self.is_running:
+                        await asyncio.sleep(0.5)
+                        
+                    if not self.is_running:
+                        return
+                        
+                    self.log_queue.put(("log", f"[RUN] Searching SKU on API: {sku}...\n"))
+                    
+                    # 1. Search product via official JSON Search API
+                    search_meta = await search_product_url_async(sku, session)
+                    if not search_meta:
+                        self.log_queue.put(("log", f"[WARN] SKU '{sku}' not found on Ket Noi Tieu Dung API.\n"))
+                        async with results_lock:
+                            failed += 1
+                            completed += 1
+                            self.crawled_results.append({
+                                'SKU': sku,
+                                'Status': 'Not Found'
+                            })
+                        self.save_session()
+                        self.log_queue.put(("progress", (completed, total_skus)))
+                        self.log_queue.put(("stats", (completed, total_skus, failed)))
+                        await asyncio.sleep(delay)
+                        return
+                        
+                    # 2. Fetch details from HTML (Breadcrumbs + Spec Table)
+                    try:
+                        details = await fetch_product_details_async(search_meta, sku, session)
+                        details['Status'] = 'Success'
+                        async with results_lock:
+                            completed += 1
+                            self.crawled_results.append(details)
+                        self.save_session()
+                        self.log_queue.put(("log", f"[OK] SKU '{sku}' parsed successfully.\n"))
+                    except Exception as e:
+                        self.log_queue.put(("log", f"[ERROR] Failed to fetch details for '{sku}': {str(e)}\n"))
+                        async with results_lock:
+                            failed += 1
+                            completed += 1
+                            self.crawled_results.append({
+                                'SKU': sku,
+                                'Status': 'Error',
+                                'Error Details': str(e)
+                            })
+                        self.save_session()
+                        
+                    self.log_queue.put(("progress", (completed, total_skus)))
+                    self.log_queue.put(("stats", (completed, total_skus, failed)))
+                    await asyncio.sleep(delay)
+            
+            # Start all tasks concurrently
+            tasks = [crawl_one(sku) for sku in target_skus]
+            await asyncio.gather(*tasks)
+            
+        self.log_queue.put(("progress", (completed, total_skus)))
+        self.log_queue.put(("stats", (completed, total_skus, failed)))
+        
+        if self.is_running:
+            if completed == total_skus:
+                self.clear_session()
+            self.log_queue.put(("done", None))
+
+    def export_results(self):
+        if not self.crawled_results:
+            messagebox.showwarning("Warning", "No results available to export.")
+            return
+            
+        save_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
+        if not save_path:
+            return
+            
+        try:
+            # 1. Transform categories array to dynamic separate columns
+            # Clean list values, fill empty fields
+            final_list = []
+            
+            # Find the max categories length
+            max_categories_len = 0
+            for r in self.crawled_results:
+                if 'categories' in r and r['categories']:
+                    max_categories_len = max(max_categories_len, len(r['categories']))
+                    
+            for r in self.crawled_results:
+                # Copy fields
+                item = {
+                    'SKU': r.get('SKU', ''),
+                    'Product Code (Site)': r.get('Product Code', ''),
+                    'Status': r.get('Status', ''),
+                    'Product Name': r.get('Name', ''),
+                    'Price (After Discount)': r.get('Price After', ''),
+                    'Price (Before Discount)': r.get('Price Before', ''),
+                    'Origin (Xuất xứ)': r.get('Origin', ''),
+                    'Warranty (Bảo hành)': r.get('Warranty', ''),
+                    'Detailed Description': r.get('Summary', ''),
+                    'Specifications': r.get('Specs', ''),
+                    'Image Link': r.get('Image Link', ''),
+                    'URL': r.get('URL', ''),
+                    'Error Details': r.get('Error Details', '')
+                }
+                
+                # Split breadcrumbs/categories to separate columns
+                cats = r.get('categories', [])
+                for i in range(max_categories_len):
+                    col_name = f"Category {i+1}"
+                    if i < len(cats):
+                        item[col_name] = cats[i]
+                    else:
+                        item[col_name] = ""
+                        
+                final_list.append(item)
+                
+            # Create DataFrame
+            df = pd.DataFrame(final_list)
+            
+            # Organize columns cleanly: Categories -> Name -> Prices -> Specs -> Media -> Metadata
+            category_cols = [f"Category {i+1}" for i in range(max_categories_len)]
+            base_cols = ['SKU', 'Product Code (Site)', 'Status', 'Product Name']
+            price_media_cols = ['Price (After Discount)', 'Price (Before Discount)', 'Origin (Xuất xứ)', 'Warranty (Bảo hành)', 'Detailed Description', 'Specifications', 'Image Link', 'URL', 'Error Details']
+            
+            ordered_cols = base_cols + category_cols + price_media_cols
+            df = df.reindex(columns=ordered_cols)
+            
+            # Save using Pandas
+            df.to_excel(save_path, index=False)
+            messagebox.showinfo("Export Successful", f"Data exported successfully to:\n{save_path}")
+            self.write_console(f"[SYS] Export Complete -> {save_path}\n")
+        except Exception as e:
+            messagebox.showerror("Export Failed", f"Could not save file:\n{str(e)}")
+
+if __name__ == "__main__":
+    root = Tk()
+    app = CrawlerApp(root)
+    root.mainloop()

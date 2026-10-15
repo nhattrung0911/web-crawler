@@ -1,0 +1,48 @@
+# WORX GREEN — crawler workshop
+# Quy tac (AGENTS.md §1): folder site CHI giu code + .bat + .env/requirements.txt.
+# Data / output / log / checkpoint KHONG commit chung.
+
+# ===== Checkpoint / resume (AGENTS.md §5) — sinh ra khi crawl, xoa duoc =====
+_raw_*.jsonl
+.*_session.json
+*_state.sqlite3
+*_state.db
+
+# ===== Cache tra ma (co TTL, tu dung lai duoc) =====
+_code_index.json
+_category_index.json
+_*_index.json
+_code_index_progress.json
+_sitemap_urls.txt
+
+# ===== Output crawl =====
+*.xlsx
+*.xls
+*.csv
+anh_*/
+images/
+out_*/
+
+# ===== Store dung chung (data that, giu tren dia nhung khong commit) =====
+products.db
+*.db-shm
+*.db-wal
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ===== Log =====
+*.log
+.playwright-mcp/
+.playwright-cli/
+.test_tmp/
+
+# ===== Bien moi truong =====
+.env
+
+# ===== NGOAI LE: cac file BAT BUOC phai co, khong duoc bo qua =====
+!requirements.txt
+!sites.json
+!product_crawl_schema.json

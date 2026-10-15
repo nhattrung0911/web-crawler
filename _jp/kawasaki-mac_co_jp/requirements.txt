@@ -1,0 +1,20 @@
+# Core async libraries
+httpx[http2]>=0.25.0      # Thay thế aiohttp, nhanh hơn 40%
+asyncio>=3.4.3
+anyio>=3.7.0             # Async foundation cho httpx
+
+# HTML parsing nhanh
+selectolax>=0.3.0        # CSS selector nhanh gấp 10x BeautifulSoup
+lxml>=5.0.0              # Parser backend cho selectolax
+
+# Data processing
+polars>=0.20.0           # Thay pandas, nhanh gấp 10-100x
+pyarrow>=14.0.0          # Format columnar cho performance
+
+# Streamlit & utilities
+streamlit>=1.29.0
+aiofiles>=23.2.0
+nest-asyncio>=1.5.0
+orjson>=3.9.0            # JSON serialization nhanh nhất
+uvloop>=0.19.0           # Thay thế asyncio event loop, nhanh hơn 2x
+tqdm>=4.66.0             # Progress bars

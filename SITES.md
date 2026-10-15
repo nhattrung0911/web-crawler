@@ -1,0 +1,80 @@
+# SITES — lich su crawler WORX GREEN
+
+> File nay SINH TU DONG: `python sites.py`. Sua status/note trong `sites.json`.
+> Tong **49** site — `[x]` xong **45** | `[~]` lam mot phan **4** | `[ ]` chua lam **0**
+
+## VN
+
+| | Site | Loai | Folder | LOC | Ghi chu |
+|---|---|---|---|---|---|
+| [x] | **baa.vn** | crawler | `_vn/baa_vn` | 470 |  |
+| [x] | **dientudanxuan.com** | crawler | `_vn/dientudanxuan_com` | 1331 | WordPress + Haravan API .js (/products/<handle>.js) + sitemap_products_*.xml (~1.26k SP), HTML fallback (LexborHTMLParser), search /search?q=&type=product, 6 mode pipeline |
+| [x] | **dungcuvang.com** | crawler | `_vn/dungcuvang_com` | 173 | WordPress/WooCommerce REST API-first: /wp-json/wp/v2/product, 17151 products/172 pages; search=SKU works. API supplies content/spec/image/category; PDP JSON-LD validates SKU/MPN/brand/price/stock. |
+| [x] | **emin.vn** | crawler | `_vn/emin_vn` | 732 | httpx+lexbor, chuan AGENTS.md. Khong API, sitemap index-cua-index (~2156 file, catalog uoc ~9.8tr SP -> mode all CO CAP MAX_SITEMAP_FILES). Slug KHONG map 1-1 tu SKU -> khong direct-lookup duoc, phai qua /search?q= (KHONG phan trang that, cap ~16-20 KQ, nhieu KQ trung substring sai) + mo hit that so khop ma CHINH XAC (AGENTS §4.3). Pipeline rieng: category (link danh muc/hang -> quet sach phan trang). |
+| [x] | **fact-link.com.vn** | crawler | `_vn/fact-link_com_vn` | 1261 | Danh ba nha may VN (~4.6k hoi vien theo banner; liet ke duoc ~4.2k), PHP SSR, khong co API/sitemap huu ich. PERF: moi trang PHP ~5 s TTFB co dinh; PHP SESSION LOCK -> request cung PHPSESSID bi xep hang, chi song song duoc voi N httpx client co cookie jar rieng (pool N, cap 16); cookie vlang (set boi index.php?lang=vn) quyet dinh ngon ngu TEN trong danh sach -> moi client phai warm bang index.php?lang=vn. Liet ke UNION 4 nguon: search_category.php?id= (GET) + search_post.php?id=&type=prov|ctry|ie (STATEFUL: search luu trong PHPSESSID, tra meta-refresh toi search_result.php?start=0; 1 client giu suot nguon). 30 dong/trang, 2 layout dong khac nhau; hoi vien chi-co-ten khong co MID (key = ten). Ho so mem_profile.php?id=MID&page=PAGE&lang=vn|en|jp: mo ta -> file .md rieng, field/dia chi(memadd)/email -> Excel; trang con mem_home/mem_content. San pham: products_list.php?id=CAT -> product_detail.php?proid=. SQLite work-queue resume; GUI + CLI count|all|detail|products|export|link; Excel tuy chon (cot MID/URL). |
+| [x] | **hoanglongvu.com** | crawler | `_vn/hoanglongvu_com` | 409 | 2-stage: Excel part -> search link -> detail |
+| [x] | **htgoods.com.vn** | crawler | `_vn/htgoods_com_vn` | 934 | Sapo/Bizweb, hang Nhat (MonotaRO resale: TRUSCO/THK/KANON...). /products.json public nhung CAP OFFSET 30.000 (page 121x250 -> 500) trong khi sitemap_products_1..11 = 100.713 SP => paginate thang MAT 70%. ALL = sitemap -> 566 collection (khong cai nao cham cap, uu tien htgoods-*) -> va 3.6k SP sot bang /products/<alias>.json; do that 100.713/100.713 (101.331 dong, co variant) ~3,5 phut conc 8, 0 lan 429. search?view=json CO tac dung nhung 4 KQ/trang -> dung tra MA (MW barcode / SKU hang / ma bo gach); keyword dung HTML /search 20 SP/trang (a.thumb-img). BAY: view=json khong escape dau " trong title -> JSON hong -> vot regex. Spec khong co table: dong 'Ten: Gia tri<br>' sau <strong>Specifications in detail</strong>, h1 an (co khi mat '<') = HANG MODEL; ~2% SP content rong -> lay summary. Gia = 0 het (Lien he), ton 0. |
+| [x] | **idmarket.vn** | crawler | `_vn/idmarket_vn` | 698 | WooCommerce. httpx+selectolax (bo Selenium). Store API /wp-json/wc/store/v1/products (37.6k SP, co gia VND) + FALLBACK HTML (sitemap + slug-direct) vi robots cam /wp-json/ va /?s=. API search chi khop tu dau ten/SKU. 6 mode: code/keyword/link/excel/all/images |
+| [x] | **insumart.vn** | crawler | `_vn/insumart_vn` | 855 | Sapo. /products.json?limit=250&page=N tra FULL data (spec trong content, variants co sku/barcode/gia/ton) -> khong can fetch detail. BAY: cap OFFSET 30.000 (page*limit>30000 -> HTTP 500) trong khi catalog that 40.511 SP => paginate thang MAT 26% khong bao loi; phai quet theo 1.361 collection roi doi chieu sitemap_products_1..5.xml de va (do that: 40.511/40.511 trong 110s). BAY: trang ngan giua chung (page 42 tra 204) van con SP -> chi dung khi rong/stuck. view=json KHONG co tac dung (tra HTML). /search?q= render server-side, tra dung ca SKU+barcode+MPN -> code mode 2 request/ma; link ket qua phai lay trong luoi (title-page-search..pagination), khong se dinh carousel. 23% SP nhieu variant (toi 15) -> xuat 1 dong/VARIANT (57k dong/40k SP). |
+| [x] | **ketnoitieudung.vn** | crawler | `_vn/ketnoitieudung_vn` | 795 |  |
+| [x] | **milwaukeevietnam.com.vn** | crawler | `_vn/milwaukeevietnam_com_vn` | 353 |  |
+| [x] | **mpe.com.vn** | crawler | `_vn/mpe_com_vn` | 454 | gom ca mpemall.com (WooCommerce Store API), 5 mode |
+| [x] | **namtoanviet.vn** | crawler | `_vn/namtoanviet_vn` | 966 | PHP tu viet, khong API. sitemap-products.xml hien co 4084 URL tho (loai /san-pham) = master list. Detail DOM-scoped: JSON-LD Product (sku/mpn/brand/image), BreadcrumbList, product-info-list (brand/model/bao hanh/luot xem), product-description, table 2 cot spec, div.btn-option-variant data-name/data-gia-number. /tim-kiem LUON tra 'khong tim thay' du tu khoa dung -> KHONG dung. Tra ma 2 tang: slug-substring roi CODE_INDEX TTL 3 ngay; index co progress sidecar theo URL. Cache chi la hint: cache miss se quet lai catalog live truoc khi Not Found; checkpoint Not Found/Unverified cu luon bi revalidate, Stop/loi xuat Unverified. Nhieu ma (sku he thong + mpn hang) cung tro 1 SP -> nhan dong rieng tung ma. |
+| [x] | **nguyenkhue.com** | crawler | `_vn/nguyenkhue_com` | 623 | Haravan .js API, 429-hibernate |
+| [x] | **npower.com.vn** | crawler | `_vn/npower_com_vn` | 464 | Excel cot Part |
+| [x] | **sieuthicongcu.com** | crawler | `_vn/sieuthicongcu_com` | 731 | Sapo/Haravan. /products.json?limit=250&page=N public list (~18.4k SP), /products/<alias>.js public detail JSON, /search?q= tra HTML SSR. Spec trong content table + ul/li va summary HTML; co variant SKU tren 1 PDP nen xuat 1 dong/variant. Mode all doi chieu them sitemap_products_*.xml de va URL. |
+| [x] | **sktools.com** | crawler | `_vn/sktools_com` | 623 |  |
+| [x] | **storelammoc.vn** | crawler | `_vn/storelammoc_vn` | 909 | Sapo ?view=json, JSON session resume |
+| [x] | **super-mro.com** | crawler | `_vn/super-mro_com` | 671 | Sieu thi MRO. httpx+selectolax, khong API (HTML server-side). ~61.6k SP, trang detail NANG 587KB (crawl ALL ~36GB). Search /tim-kiem?key= tra duoc CA Ma he thong (khong nam trong slug) NHUNG robots cam -> co fallback sitemap-index (--sitemap), fallback chi khop ma nam trong slug. CO gia VND (nhieu SP 'Lien he'). 6 mode: code/keyword/link/excel/all/images |
+| [x] | **thietbidungcukythuat.com** | crawler | `_vn/thietbidungcukythuat_com` | 549 | WordPress/WooCommerce. Store API /wp-json/wc/store/v1/products ho tro sku= exact code, search= keyword, per_page=100, tong ~5.5k SP. Link mode resolve slug qua /wp-json/wp/v2/product roi nap lai bang Store API. Search web ?s= bi 410/robots chan nen khong dung. Spec va mo ta nam trong description HTML. |
+| [x] | **trangvangvietnam.com** | crawler | `_vn/trangvangvietnam_com` | 2418 | danh ba doanh nghiep, khong phai san pham |
+| [x] | **trungtamdungcu.com** | crawler | `_vn/trungtamdungcu_com` | 821 | Haravan (khong co JSON search API dung duoc, products.json rong) + detail JSON /products/<slug>.js (gia = js.price/100) + sitemap 78 file (~77k SP, real-time) -> code-index (khop duoi slug, cache TTL 7 ngay). Spec trong description HTML <ul><li> -> cot Thong so. |
+| [x] | **trungtamthietbi.com** | crawler | `_vn/trungtamthietbi_com` | 1128 | CMS PHP 5.3 tu viet, SSR HTML, KHONG co API (products.json/wp-json/search 404). TLS thieu cert trung gian GoGetSSL -> nhung CA_EXTRA vao ssl ctx (verify van bat). Sitemap CU 2016 (46k loc -> ~16k SP sau khi loc /lien-he, va duoi rac) nen discovery = BFS /viewall.html -> danh-muc -> danh-sach (+phan trang) HOP sitemap. Full run 2026-10-02: BFS 1547 trang -> 23032 SP, sitemap them 3580 -> work-list 26612, crawl OK 26596 (96 phut, conc 16, 0 loi). Search /search.html?keywords= (1 ma khop -> redirect thang SP). Spec = dong '- Ten: Gia tri' sau heading THONG SO, cat tai n-box. PHP SESSION LOCK -> ClientPool N client cookie rieng (48 SP: 1 client chung 1,5-2,5 req/s vs pool 3,4-4,7 req/s). Checkpoint/log/Excel o out_trungtamthietbi/ (checkpoint cu o folder site tu dong move sang). Pytest tests/trungtamthietbi (fixture HTML that). |
+| [x] | **tst** | crawler | `_vn/tst` | 519 | HTTP async + Playwright fallback |
+| [x] | **vn.bosch-pt.com** | crawler | `_vn/vn_bosch-pt_com` | 1116 | async, category -> product URL |
+| [~] | **vongbicongnghiep.vn** | crawler | `_vn/vongbicongnghiep_vn` | 214 | CHI RESOLVE URL theo keyword (Playwright). Chua parse detail/spec |
+| [x] | **vxanh.com** | crawler | `_vn/vxanh_com` | 739 | Custom SSR/Laravel-style HTML, khong thay public JSON API. Search/list /tim-san-pham?page= va /tim-san-pham?q=... (24 card/trang, live list 24.738 URL/1.031 trang) + sitemap.xml (24.734 URL) nen mode all phai union list+sitemap. PDP parse .product-title, .product-codes, .product-facts, .spec-table, .product-gallery; code mode phai verify exact ca Ma V Xanh va Ma tham khao. |
+| [x] | **xsafe.vn** | crawler | `_vn/xsafe_vn` | 779 | Sapo, JSON session resume |
+| [x] | **yato.vn** | crawler | `_vn/yato_vn` | 811 | Yato VN (nha phan phoi). httpx+selectolax, khong API. Moi lan tra code/excel tai sitemap live; _code_index.json chi la hint URL fallback va PDP luon verify ma live. sitemap hien 3.356 URL SP (PHP warning dau file -> regex <loc>), 3.278 ma sau build fallback. SEARCH /tim-kiem/<kw>-page<N> khop ma khong tin cay. Detail spec o #menu1; gallery lay a.MagicZoomPlus/a.Selector href original. 6 mode + --build-index |
+
+## CN
+
+| | Site | Loai | Folder | LOC | Ghi chu |
+|---|---|---|---|---|---|
+| [x] | **bosi.cn** | crawler | `_cn/bosi_cn` | 212 | HTML tinh, brute-force ID enum (giai phap cuoi) |
+| [x] | **luosiwang.com** | crawler | `_cn/luosiwang_com` | 1681 | 2-pipeline, Playwright chon category |
+| [x] | **zcwz.com** | crawler | `_cn/zcwz_com` | 684 | SQLite work-queue, WAF pause-event, 2-pha |
+
+## JP
+
+| | Site | Loai | Folder | LOC | Ghi chu |
+|---|---|---|---|---|---|
+| [x] | **anextool.co.jp** | crawler | `_jp/anextool_co_jp` | 618 | WordPress, sitemap XML, spec dl/dt/dd |
+| [x] | **armsangyo.co.jp** | crawler | `_jp/armsangyo_co_jp` | 704 | HTML tinh, BFS, spec <table> |
+| [x] | **eight-tool.co.jp** | crawler | `_jp/eight-tool_co_jp` | 640 |  |
+| [x] | **kawasaki-mac.co.jp** | crawler | `_jp/kawasaki-mac_co_jp` | 1487 | Streamlit UI, aiohttp + tenacity |
+| [x] | **tsunoda-japan.com** | crawler | `_jp/tsunoda-japan_com` | 865 | song ngu, BFS hub, table rowspan/colspan, 1 page nhieu model |
+
+## Global
+
+| | Site | Loai | Folder | LOC | Ghi chu |
+|---|---|---|---|---|---|
+| [x] | **digikey.com** | crawler | `_global/digikey_com` | 539 | Next.js __NEXT_DATA__, Playwright warmup qua Cloudflare |
+| [~] | **hoffmann.group.com** | crawler | `_global/hoffmann_group_com` | 689 | SAP Commerce/Hybris; exact JSON resolver /fastproductsearch/v1/check/product?productCode= and PDP /p/<article>-<variant> tested live (code, URL, Excel). SQLite persists code-to-PDP resolution: core warm rerun measured 36.8% faster. Search/category PLP currently returns WAF/empty non-product HTML from this IP; crawler detects it, returns explicit status, and needs a later live retest before done. |
+| [x] | **ingco.com** | crawler | `_global/ingco_com` | 747 | SPA umi/React, SSR JSON trong window.g_initialProps.data (khong parse HTML). VN: 6 category that (allCategory), 350 SP. Detail /vn/product/<slug-bat-ky>/<CODE> - slug wildcard, resolve theo CODE. BAY: thieu header Accept -> SSR rong; backend flaky 25-75%/lan chay -> Status Failed rieng biet Not Found, resume tu dong thu lai. |
+| [x] | **ponyjorgensen.com** | crawler | `_global/ponyjorgensen_com` | 724 | clamp catalog |
+| [x] | **proskit.com** | crawler | `_global/proskit_com` | 657 | ASP.NET tinh, khong API. Sitemap-tools.xml = 2709 URL SP (moi, dung thang cho all). Slug=ma (/Product/<CODE>, case-insensitive, ma sai redirect ve /Products 200 -> can redirect-guard). ld+json Product+BreadcrumbList = sku/name/image/cat (khong phai SP nao cung co Product block, vd kit PK-2091M chi co BreadcrumbList -> fallback slug/swiper-img). Spec = table trong #productInfo, PARSE BANG build_grid() giai rowspan/colspan (bang kit hay gop 2 ma dung 1 mo ta qua rowspan — naive td-pair se mat dong, da fix+test that voi PK-2091M). Anh: uu tien ld+json image[], fallback swiper-BigImg; SP kit thuong CHI 1 anh that (icon nho trong bang spec khong tinh la anh SP). Search fallback /SearchProducts?keyword=&page=. KHONG co gia/ton kho cong khai (B2B catalog). |
+| [~] | **se.com** | crawler | `_global/se_com` | 194 | MOI LAY TEN SAN PHAM (name-only). Thieu spec/gia/anh |
+| [~] | **skf.com** | crawler | `_global/skf_com` | 195 | Playwright doc bang tu LIST URL co san. Chua co discovery (sitemap/search) |
+| [x] | **toptul.com** | crawler | `_global/toptul_com` | 859 | httpx+selectolax (bo Selenium). Khong co API; sitemap group 1..25 (~2.5k trang); search ?key=; 1 trang = nhieu ITEM NO (bang rowspan/colspan); khong co gia. 6 mode: code/keyword/link/excel/all/images |
+| [x] | **totalbusiness.com** | crawler | `_global/totalbusiness_com` | 596 | TOTAL Tools. SPA umi NHUNG co SSR -> window.g_initialProps chua JSON du (httpx thuan, khong browser). list /products?pageNum=N (40/trang, 919 SP); search ?keyWord= (dung 'keyWord', keyword/searchKey bi bo qua); detail /product/<slug>/<productNo> -> parameter = spec. Khong co gia. 4 SP bi site tra 403 -> fallback lay data tu trang list. 6 mode + --category |
+| [x] | **totalpowertools.in** | crawler | `_global/totalpowertools_in` | 239 | Lightspeed/Ecwid store 62425538. Sitemap.xml live master: 1,373 product URLs. Ecwid v3 public API returns 403, but storefront POST /storefront/api/v1/62425538/catalog/product with productId returns SKU, price INR, stock, default category path, HTML description/spec and original image URLs. Live benchmark: conc=4 gave 24/24 200 at 4.19 PDP/s; conc=8 gave 19/24 HTTP 429, so crawler caps concurrency at 4. Modes: code/keyword/link/excel/all; JSONL resume. |
+| [x] | **wadfow.com** | crawler | `_global/wadfow_com` | 464 | WADFOW Philippines React/UMI SPA; public gatewayapi-sg.rdmcenter.com/website-common-api: product pageNum/pageSize/keyword + product/detail?productExtNo. API requires domain/lang/siteorigin headers; detail has parameter, price, stock, gallery. httpx API-first, JSONL resume, 5 modes. |
+| [x] | **yatohandtools.com** | crawler | `_global/yatohandtools_com` | 672 | YATO nha may TQ (catalog EN). httpx+selectolax, khong API. sitemap.xml -> plist.xml 1446 SP. SEARCH HONG: /search?keyword= tra 200 nhung 0 SP => CODE-INDEX. LUU Y index PHAI crawl that (~200s): 701/1446 slug KHONG chua ma (vd 'yato-combination-spanner-9mm' -> ma that YT-0009 chi co trong bang Model Number) -> chi doc slug se sot 48%. Index that = 1144 ma. Spec = table[0] cap doi [Nhan:,Gia tri]x2. Anh .swiper-slide img (loai banner /upload/product/<date>/pic_*). KHONG co gia. 5 mode + --build-index |
+
+## Con viec (partial/todo)
+
+- **hoffmann.group.com** (partial) — SAP Commerce/Hybris; exact JSON resolver /fastproductsearch/v1/check/product?productCode= and PDP /p/<article>-<variant> tested live (code, URL, Excel). SQLite persists code-to-PDP resolution: core warm rerun measured 36.8% faster. Search/category PLP currently returns WAF/empty non-product HTML from this IP; crawler detects it, returns explicit status, and needs a later live retest before done.
+- **se.com** (partial) — MOI LAY TEN SAN PHAM (name-only). Thieu spec/gia/anh
+- **skf.com** (partial) — Playwright doc bang tu LIST URL co san. Chua co discovery (sitemap/search)
+- **vongbicongnghiep.vn** (partial) — CHI RESOLVE URL theo keyword (Playwright). Chua parse detail/spec

@@ -1,0 +1,122 @@
+{
+  "table": "product",
+  "design": "v7 — one universal SQLite table; every crawler upserts into it via crawl_store.store(). Source-agnostic CONTRACT: crawlers bend their data into this shape, the shape never bends per site. Weight + packaging dimensions are REAL writable columns (not JSON, not generated) so they sort/filter/UPDATE freely and survive back-fill; only volumetric/chargeable weight are generated from them. Identity is a single generated dedup_key (source + external_id, else source + url). Real DDL: schema.sql (source of truth). Ingest: crawl_store.py.",
+  "date": "2026-07-09",
+  "target": "SQLite (generated STORED columns + json_extract). Migrate to Postgres later with the same shape if scale demands.",
+  "canonical_units": {
+    "note": "Every crawler MUST convert into these before ingest — the point of a shared contract is that a column means the same thing across all sources.",
+    "weight": "kilograms (kg). Columns net_weight_kg / gross_weight_kg.",
+    "dimensions": "centimetres (cm). Columns pack_length_cm / pack_width_cm / pack_height_cm.",
+    "price": "numeric value in commercial.price.value with an explicit commercial.price.currency (ISO like VND, USD). Never mix currencies in one column without the currency tag."
+  },
+  "identity_rule": "Every row must be addressable by external_id OR url (CHECK ck_identity). url may be NULL for API sources with no per-product page — do NOT invent synthetic URLs; rely on external_id. dedup_key = source + '|' + coalesce(external_id, url).",
+  "price_history": "Sibling append-only table `price_history` (see schema.sql). `product` holds the latest snapshot; price_history keeps EVERY distinct price observed over time (time-based discounts included) — never overwritten, never picked. crawl_store.store() appends a row whenever the price differs from the last observation for that dedup_key. Columns: dedup_key, source, external_id, price_value, currency, stock_status, account_tier, observed_at. Same product crawled under different sources/tiers (dealer vs public retail) accumulates independent price series — join product rows by external_id for dealer-vs-retail margin.",
+  "written_columns": {
+    "note": "Written directly by crawl_store.store(). Weight/packaging dims are plain writable columns so they can be back-filled with a normal UPDATE (coalesce on upsert protects a manual back-fill from being wiped by a later re-crawl).",
+    "fields": [
+      { "field": "id", "type": "INTEGER", "required": true, "note": "PRIMARY KEY AUTOINCREMENT." },
+      { "field": "source", "type": "TEXT", "required": true, "note": "Crawler id, e.g. \"phuthaitech\". Part of identity." },
+      { "field": "external_id", "type": "TEXT", "required": false, "note": "Source product code/id. Required UNLESS url present (identity rule)." },
+      { "field": "url", "type": "TEXT", "required": false, "note": "Canonical per-product URL. Nullable; required UNLESS external_id present." },
+      { "field": "product_name", "type": "TEXT", "required": true, "note": "Sole source of truth for the name. NOT duplicated inside product JSON." },
+      { "field": "product", "type": "JSON", "required": true, "note": "See product_shape." },
+      { "field": "specification", "type": "JSON", "required": false, "note": "See specification_shape. Technical spec key-values (incl. product weight/dims AS spec, distinct from packaging)." },
+      { "field": "commercial", "type": "JSON", "required": false, "note": "See commercial_shape. price/stock/MOQ/unit only." },
+      { "field": "media", "type": "JSON", "required": false, "note": "See media_shape." },
+      { "field": "crawl", "type": "JSON", "required": true, "note": "See crawl_shape." },
+      { "field": "net_weight_kg", "type": "NUMERIC", "required": false, "note": "Writable. Bare product weight (kg)." },
+      { "field": "gross_weight_kg", "type": "NUMERIC", "required": false, "note": "Writable. Packed weight carriers weigh (kg). Indexed." },
+      { "field": "pack_length_cm", "type": "NUMERIC", "required": false, "note": "Writable. Packaging box L (cm)." },
+      { "field": "pack_width_cm", "type": "NUMERIC", "required": false, "note": "Writable. Packaging box W (cm)." },
+      { "field": "pack_height_cm", "type": "NUMERIC", "required": false, "note": "Writable. Packaging box H (cm)." },
+      { "field": "content_hash", "type": "TEXT", "required": true, "note": "sha256 over parsed business fields (name+product+spec+commercial+media+weights). Drives change detection." },
+      { "field": "raw_hash", "type": "TEXT", "required": true, "note": "sha256 over the raw payload (HTML or JSON, whatever the source returned)." },
+      { "field": "schema_version", "type": "TEXT", "required": true, "note": "\"v7\". Kept — cheap, multiple versions coexist during a migration window." },
+      { "field": "created_at", "type": "TIMESTAMP", "required": true, "note": "Set on insert." },
+      { "field": "updated_at", "type": "TIMESTAMP", "required": true, "note": "Bumped by trigger only on a real change." }
+    ]
+  },
+  "generated_columns": {
+    "note": "Computed/indexed, never written directly. schema.sql is the source of truth for expressions.",
+    "fields": [
+      { "field": "dedup_key", "source_path": "source || '|' || coalesce(external_id, url)", "type": "TEXT", "index": "UNIQUE", "note": "Single upsert target." },
+      { "field": "sku", "source_path": "json_extract(product,'$.sku')", "type": "TEXT", "index": "BTREE" },
+      { "field": "mpn", "source_path": "json_extract(product,'$.mpn')", "type": "TEXT", "index": "BTREE" },
+      { "field": "brand", "source_path": "json_extract(product,'$.brand')", "type": "TEXT", "index": "BTREE" },
+      { "field": "category_path", "source_path": "json_extract(product,'$.category')", "type": "TEXT", "index": "BTREE" },
+      { "field": "price_numeric", "source_path": "json_extract(commercial,'$.price.value')", "type": "NUMERIC", "index": "BTREE" },
+      { "field": "availability", "source_path": "json_extract(commercial,'$.stock.status')", "type": "TEXT", "index": "BTREE" },
+      { "field": "crawl_status", "source_path": "json_extract(crawl,'$.status')", "type": "TEXT", "index": "BTREE" },
+      { "field": "parse_score", "source_path": "json_extract(crawl,'$.score')", "type": "INTEGER", "index": "-" },
+      { "field": "volumetric_weight_kg", "source_path": "(pack_length_cm*pack_width_cm*pack_height_cm)/5000.0", "type": "NUMERIC", "index": "-", "note": "Dimensional weight from the writable dim columns." },
+      { "field": "chargeable_weight_kg", "source_path": "max(gross_weight_kg, volumetric)", "type": "NUMERIC", "index": "BTREE", "note": "Bill on heavier of actual vs volumetric. Multiply by per-kg rate for shipping cost." }
+    ]
+  },
+  "json_shapes": {
+    "product_shape": {
+      "brand": "string, nullable — single field, raw/normalized split dropped until a normalize pipeline exists",
+      "sku": "string, nullable",
+      "mpn": "string, nullable",
+      "manufacturer": "string, nullable",
+      "series": "string, nullable",
+      "category": "string, nullable — NOT every source exposes a category; leave NULL rather than fake one",
+      "country_of_origin": "string, nullable",
+      "language": "string, nullable"
+    },
+    "specification_shape": {
+      "raw_text": "string",
+      "items": {
+        "<attribute_name>": { "raw": "string, always present", "value": "number, nullable", "unit": "string, nullable" }
+      },
+      "note": "Product technical dims/weight (as a spec) live here as items (e.g. items.Weight). This is DIFFERENT from packaging: spec = the product's own physical attributes; the pack_* / *_weight_kg columns = the shipping carton."
+    },
+    "commercial_shape": {
+      "price": { "value": "number, nullable", "raw": "string, nullable", "currency": "string, nullable — ISO code, REQUIRED whenever value is set", "includes_tax": "boolean, nullable" },
+      "stock": { "status": "string, default \"unknown\"", "quantity": "number, nullable" },
+      "unit": "string, nullable — selling unit (pcs, m, kg...)",
+      "min_order_qty": "number, nullable",
+      "pricing_limitation": "ONE price per row = the price the crawling account sees. Tier/account is recorded in crawl.account_tier. Multi-tier / qty-break pricing is NOT modeled — to capture multiple tiers, crawl once per account (they land as separate rows only if source differs, else last write wins). Extend with a price_tiers array later if a real need appears."
+    },
+    "media_shape": {
+      "images": "array of {url, type}, default []",
+      "documents": "array of {type, url}, default []",
+      "videos": "array of URL strings, default []"
+    },
+    "crawl_shape": {
+      "status": "string, required — enum: success, partial, failed",
+      "version": "string, required",
+      "crawler": "string, nullable",
+      "score": "number, required — parse-confidence 0..100; set 100 for structured APIs where parsing can't fail",
+      "account_tier": "string, nullable — which account/tier the price/stock reflects (e.g. dealer login email)",
+      "duration_ms": "number, nullable",
+      "flags": "array of strings, default []",
+      "error": "string, nullable",
+      "source_updated_at": "timestamp, nullable",
+      "raw_html_ref": "string, nullable",
+      "raw_json_ref": "string, nullable",
+      "notes": "string, nullable"
+    }
+  },
+  "null_strategy": {
+    "strings": "Missing/unknown = NULL, never \"\".",
+    "numbers": "Missing/unparseable = NULL, never 0.",
+    "enums_with_unknown_state": "stock.status and crawl.status always populated, default \"unknown\", never NULL.",
+    "arrays": "Always default to [], never null."
+  },
+  "constraints": [
+    "UNIQUE(dedup_key) — the single upsert target (source + external_id, else source + url)",
+    "CHECK ck_identity — external_id IS NOT NULL OR url IS NOT NULL",
+    "product_name indexed BTREE for prefix search; add an FTS5 mirror table if full-text ranking is needed"
+  ],
+  "changes_this_round": [
+    "v7: synced this doc to the real schema.sql — prior v6 doc described a `packaging` JSON column and JSON-sourced weight columns that the implementation does NOT have",
+    "Weight + packaging dims documented as REAL writable columns (net/gross_weight_kg, pack_L/W/H_cm); only volumetric/chargeable are generated from them",
+    "Added canonical_units block (kg / cm / currency-tagged price) — mandatory conversion contract so a column means the same across every source",
+    "product.category relaxed to nullable (not every source has one) — matches reality, no faking",
+    "url relaxed to nullable + identity_rule (external_id OR url) enforced by CHECK ck_identity — no synthetic URL pollution for API sources",
+    "id fixed to INTEGER (was ambiguous BIGINT|UUID)",
+    "raw_hash note corrected: raw payload (HTML or JSON), not 'raw HTML' only",
+    "Documented the single-price limitation explicitly (one price per row = crawling account's price; tier in crawl.account_tier)",
+    "PhuThaiTech remains first producer: API gives no weight/dims -> those columns NULL, back-fillable later"
+  ]
+}
